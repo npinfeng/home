@@ -1,0 +1,21 @@
+{
+  "name": "wechat-message-collect",
+  "version": "1.0.0",
+  "description": "微信公众号消息收集并存储到微信云存储Excel",
+  "main": "main.py",
+  "scripts": {
+    "start": "uvicorn main.py:app --host 0.0.0.0 --port 80"
+  },
+  "dependencies": {},
+  "wxcloudrun": {
+    "containerPort": 80,
+    "resources": {
+      "cpu": 0.5,
+      "memory": 1024
+    },
+    "autoScale": {
+      "minReplicas": 1,
+      "maxReplicas": 3
+    }
+  }
+}
