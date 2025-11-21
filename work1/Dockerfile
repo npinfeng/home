@@ -1,5 +1,5 @@
-# 基础镜像：微信云托管Python3.9官方镜像（内置依赖环境）
-FROM wxcloudrun/python:3.9-slim
+# 基础镜像：Python3.9官方镜像（内置依赖环境）
+FROM python:3.9-slim
 
 # 避免中文乱码
 ENV LANG C.UTF-8
