@@ -8,15 +8,12 @@ import os
 import traceback
 
 # ---------------- 微信配置 ----------------
-TOKEN = os.getenv("TOKEN")
-APPID = os.getenv("APPID")
-APPSECRET = os.getenv("APPSECRET")
+TOKEN = os.getenv("TOKEN", "YOUR_TOKEN")
+APPID = os.getenv("APPID", "YOUR_APPID")
+APPSECRET = os.getenv("APPSECRET", "YOUR_APPSECRET")
 
 if not (TOKEN and APPID and APPSECRET):
-    print("⚠️ 环境变量未配置完整：TOKEN, APPID, APPSECRET")
-    TOKEN = TOKEN or "YOUR_TOKEN"
-    APPID = APPID or "YOUR_APPID"
-    APPSECRET = APPSECRET or "YOUR_APPSECRET"
+    print("⚠️ 警告：微信环境变量未配置完整")
 
 # Excel 文件路径（容器临时目录）
 EXCEL_FILENAME = "wechat_messages.xlsx"
@@ -26,11 +23,9 @@ app = FastAPI()
 
 # ---------------- 工具函数 ----------------
 def get_excel_df() -> pd.DataFrame:
-    """获取 Excel 数据（不存在则返回空 DataFrame）"""
     try:
         if os.path.exists(LOCAL_TEMP_PATH):
-            df = pd.read_excel(LOCAL_TEMP_PATH, engine="openpyxl")
-            return df
+            return pd.read_excel(LOCAL_TEMP_PATH, engine="openpyxl")
         else:
             return pd.DataFrame(columns=["接收时间", "用户OpenID", "消息类型", "消息内容", "消息ID"])
     except Exception:
@@ -38,7 +33,6 @@ def get_excel_df() -> pd.DataFrame:
         return pd.DataFrame(columns=["接收时间", "用户OpenID", "消息类型", "消息内容", "消息ID"])
 
 def save_excel_df(df: pd.DataFrame):
-    """保存 DataFrame 到本地 Excel（去重后保存）"""
     df = df.drop_duplicates(subset=["消息ID"], keep="last")
     df.to_excel(LOCAL_TEMP_PATH, index=False, engine="openpyxl")
     print(f"Excel 已保存，当前共 {len(df)} 条消息")
@@ -53,22 +47,17 @@ async def wechat_verify(
 ):
     """微信服务器验证接口"""
     try:
-        # 如果 signature 不为空，说明是微信服务器请求，做签名验证
         if signature:
             check_signature(TOKEN, signature, timestamp, nonce)
-        return responses.PlainTextResponse(echostr or "ok")
+        return responses.PlainTextResponse(echostr or "ok")  # 支持浏览器直接访问
     except InvalidSignatureException:
         return responses.PlainTextResponse("Invalid signature", status_code=403)
 
 @app.post("/wechat")
-async def receive_message(
-    request: Request, 
-    signature: str = "", 
-    timestamp: str = "", 
-    nonce: str = ""
-):
+async def receive_message(request: Request, signature: str = "", timestamp: str = "", nonce: str = ""):
     """接收公众号消息"""
     try:
+        # 仅在 signature 非空时才验证签名
         if signature:
             check_signature(TOKEN, signature, timestamp, nonce)
     except InvalidSignatureException:
@@ -76,9 +65,12 @@ async def receive_message(
 
     try:
         xml_data = await request.body()
+        if not xml_data.strip():
+            return responses.PlainTextResponse("No XML data received", status_code=400)
         msg = parse_message(xml_data)
         print(f"收到消息: 类型={msg.type}, 用户={msg.source}, 内容={getattr(msg, 'content', '无')}")
     except Exception:
+        print(traceback.format_exc())
         return responses.PlainTextResponse("Parse message failed", status_code=500)
 
     # 处理消息内容
@@ -117,5 +109,5 @@ async def health_check():
 # ---------------- 启动 ----------------
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 80))  # 微信云托管默认使用 PORT
+    port = int(os.getenv("PORT", 8080))  # 微信云托管会注入 PORT
     uvicorn.run(app, host="0.0.0.0", port=port)
