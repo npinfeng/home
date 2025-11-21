@@ -1,4 +1,4 @@
-# 基础镜像：微信云托管Python3.11官方镜像（内置依赖环境）
+# 基础镜像：微信云托管Python3.9官方镜像（内置依赖环境）
 FROM wxcloudrun/python:3.9-slim
 
 # 避免中文乱码
