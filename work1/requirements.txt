@@ -4,4 +4,3 @@ wechatpy
 pandas
 openpyxl
 cryptography
-wxcloudrun-sdk  
