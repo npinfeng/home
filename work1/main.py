@@ -12,7 +12,11 @@ TOKEN = os.getenv("TOKEN")
 APPID = os.getenv("APPID")
 APPSECRET = os.getenv("APPSECRET")
 
-assert TOKEN and APPID and APPSECRET, "请在环境变量中配置 TOKEN, APPID, APPSECRET"
+if not (TOKEN and APPID and APPSECRET):
+    print("⚠️ 环境变量未配置完整：TOKEN, APPID, APPSECRET")
+    TOKEN = TOKEN or "YOUR_TOKEN"
+    APPID = APPID or "YOUR_APPID"
+    APPSECRET = APPSECRET or "YOUR_APPSECRET"
 
 # Excel 文件路径（容器临时目录）
 EXCEL_FILENAME = "wechat_messages.xlsx"
@@ -100,4 +104,5 @@ async def health_check():
 # ---------------- 启动 ----------------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 80)))
+    port = int(os.getenv("PORT", 80))  # 微信云托管默认使用 PORT
+    uvicorn.run(app, host="0.0.0.0", port=port)
