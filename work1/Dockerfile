@@ -12,7 +12,7 @@ RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 # 容器暴露端口（微信云托管通常使用 8080）
-EXPOSE 80
+EXPOSE 8080
 
 # 启动 FastAPI
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
