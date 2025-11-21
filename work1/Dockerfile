@@ -1,5 +1,5 @@
 # 基础镜像：微信云托管Python3.11官方镜像（内置依赖环境）
-FROM wxcloudrun/python:3.11-slim
+FROM wxcloudrun/python:3.9-slim
 
 # 避免中文乱码
 ENV LANG C.UTF-8
@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua
 # 复制所有应用代码到工作目录
 COPY . .
 
-# 暴露端口（云托管强制8080端口，必须声明）
+# 暴露端口（云托管强制80端口，必须声明）
 EXPOSE 80
 
 # 启动命令（必须与代码中uvicorn端口一致，前台运行）
