@@ -1,113 +1,112 @@
-from fastapi import FastAPI, Request, responses
-from wechatpy import parse_message, create_reply
-from wechatpy.utils import check_signature
-from wechatpy.exceptions import InvalidSignatureException
-import pandas as pd
-from datetime import datetime
 import os
-import traceback
+import logging
+import json
+from datetime import datetime
+import pandas as pd
+import xmltodict
+from fastapi import FastAPI, Request, BackgroundTasks, Response
 
-# ---------------- 微信配置 ----------------
-TOKEN = os.getenv("TOKEN", "YOUR_TOKEN")
-APPID = os.getenv("APPID", "YOUR_APPID")
-APPSECRET = os.getenv("APPSECRET", "YOUR_APPSECRET")
-
-if not (TOKEN and APPID and APPSECRET):
-    print("⚠️ 警告：微信环境变量未配置完整")
-
-# Excel 文件路径（容器临时目录）
-EXCEL_FILENAME = "wechat_messages.xlsx"
-LOCAL_TEMP_PATH = f"/tmp/{EXCEL_FILENAME}"
+# ---------------- 日志 ----------------
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# ---------------- 工具函数 ----------------
-def get_excel_df() -> pd.DataFrame:
+# Excel 文件（容器临时目录）
+EXCEL_FILE = os.path.join("/tmp", "messages.xlsx")
+
+def init_excel():
+    if not os.path.exists(EXCEL_FILE):
+        df = pd.DataFrame(columns=["MsgId", "FromUserName", "CreateTime", "MsgType", "Content", "ReceiveTime"])
+        df.to_excel(EXCEL_FILE, index=False)
+        logger.info("Initialized new Excel file.")
+
+init_excel()
+
+def save_to_excel(data: dict):
     try:
-        if os.path.exists(LOCAL_TEMP_PATH):
-            return pd.read_excel(LOCAL_TEMP_PATH, engine="openpyxl")
-        else:
-            return pd.DataFrame(columns=["接收时间", "用户OpenID", "消息类型", "消息内容", "消息ID"])
-    except Exception:
-        print(f"加载 Excel 失败：{traceback.format_exc()}")
-        return pd.DataFrame(columns=["接收时间", "用户OpenID", "消息类型", "消息内容", "消息ID"])
+        msg_data = {
+            "MsgId": data.get("MsgId", str(datetime.now().timestamp())),
+            "FromUserName": data.get("FromUserName", "Unknown"),
+            "CreateTime": data.get("CreateTime", ""),
+            "MsgType": data.get("MsgType", "text"),
+            "Content": data.get("Content") or f"[Event: {data.get('Event')}]" if "Event" in data else "[Non-Text Message]",
+            "ReceiveTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        df = pd.read_excel(EXCEL_FILE)
+        new_row = pd.DataFrame([msg_data])
+        df = pd.concat([df, new_row], ignore_index=True)
+        df.to_excel(EXCEL_FILE, index=False)
+        logger.info(f"Message saved: {msg_data['Content']}")
+    except Exception as e:
+        logger.error(f"Error saving to Excel: {e}")
 
-def save_excel_df(df: pd.DataFrame):
-    df = df.drop_duplicates(subset=["消息ID"], keep="last")
-    df.to_excel(LOCAL_TEMP_PATH, index=False, engine="openpyxl")
-    print(f"Excel 已保存，当前共 {len(df)} 条消息")
+# ---------------- 根路径 ----------------
+@app.get("/")
+async def root():
+    return {"status": "running", "service": "WeChat Message Collector"}
 
-# ---------------- 微信接口 ----------------
-@app.get("/wechat")
-async def wechat_verify(
-    signature: str = "", 
-    timestamp: str = "", 
-    nonce: str = "", 
-    echostr: str = ""
-):
-    """微信服务器验证接口"""
-    try:
-        if signature:
-            check_signature(TOKEN, signature, timestamp, nonce)
-        return responses.PlainTextResponse(echostr or "ok")  # 支持浏览器直接访问
-    except InvalidSignatureException:
-        return responses.PlainTextResponse("Invalid signature", status_code=403)
-
+# ---------------- 消息接收接口 ----------------
 @app.post("/wechat")
-async def receive_message(request: Request, signature: str = "", timestamp: str = "", nonce: str = ""):
-    """接收公众号消息"""
+async def receive_message(request: Request, background_tasks: BackgroundTasks):
     try:
-        # 仅在 signature 非空时才验证签名
-        if signature:
-            check_signature(TOKEN, signature, timestamp, nonce)
-    except InvalidSignatureException:
-        return responses.PlainTextResponse("Invalid signature", status_code=403)
+        body = await request.body()
+        content = body.decode("utf-8")
+        logger.info(f"Received Raw Body: {content}")
 
-    try:
-        xml_data = await request.body()
-        if not xml_data.strip():
-            return responses.PlainTextResponse("No XML data received", status_code=400)
-        msg = parse_message(xml_data)
-        print(f"收到消息: 类型={msg.type}, 用户={msg.source}, 内容={getattr(msg, 'content', '无')}")
-    except Exception:
-        print(traceback.format_exc())
-        return responses.PlainTextResponse("Parse message failed", status_code=500)
+        msg_data = {}
 
-    # 处理消息内容
-    if msg.type == "text":
-        content = msg.content.strip()
-    elif msg.type in ["image", "voice", "video", "shortvideo"]:
-        content = getattr(msg, "media_id", "无")
-    elif msg.type in ["location", "link"]:
-        content = getattr(msg, "title", "无")
-    else:
-        content = "未处理消息"
+        # 尝试解析 JSON
+        if content.strip().startswith("{"):
+            try:
+                payload = json.loads(content)
+                if "FromUserName" in payload:
+                    msg_data = payload
+                elif "data" in payload and isinstance(payload["data"], dict):
+                    msg_data = payload["data"]
+                elif "action" in payload:  # CloudEvent
+                    msg_data = payload.get("data", {})
+                else:
+                    msg_data = payload
+                logger.info("Parsed as JSON.")
+            except Exception as e:
+                logger.error(f"JSON parsing failed: {e}")
 
-    message_data = {
-        "接收时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
-        "用户OpenID": msg.source,
-        "消息类型": msg.type,
-        "消息内容": content,
-        "消息ID": msg.id
-    }
+        # JSON 失败尝试 XML
+        if not msg_data:
+            try:
+                xml_dict = xmltodict.parse(content)
+                msg_data = xml_dict.get("xml", {})
+                logger.info("Parsed as XML.")
+            except Exception as e:
+                logger.error(f"XML parsing failed: {e}")
 
-    # 保存 Excel
-    df = get_excel_df()
-    df = pd.concat([df, pd.DataFrame([message_data])], ignore_index=True)
-    save_excel_df(df)
+        if not msg_data or "FromUserName" not in msg_data:
+            logger.warning("Invalid message data.")
+            return Response(content="success", media_type="text/plain")
 
-    # 回复微信消息
-    reply_text = "✅ 消息已收到" if msg.type == "text" else f"✅ 已收到 {msg.type} 消息"
-    reply = create_reply(reply_text, msg)
-    return responses.PlainTextResponse(reply.render(), media_type="application/xml")
+        # 异步保存 Excel
+        background_tasks.add_task(save_to_excel, msg_data)
+        return Response(content="success", media_type="text/plain")
 
-# ---------------- 健康检查接口 ----------------
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        return Response(content="success", media_type="text/plain")
+
+# ---------------- 下载 Excel ----------------
+@app.get("/download")
+async def download_excel():
+    if os.path.exists(EXCEL_FILE):
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=EXCEL_FILE,
+            filename="wechat_messages.xlsx",
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    return {"error": "No file found"}
 
 # ---------------- 启动 ----------------
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8080))  # 微信云托管会注入 PORT
+    port = int(os.getenv("PORT", 8080))  # 微信云托管默认 PORT
     uvicorn.run(app, host="0.0.0.0", port=port)
