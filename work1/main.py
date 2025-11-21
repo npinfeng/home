@@ -45,19 +45,32 @@ def save_excel_df(df: pd.DataFrame):
 
 # ---------------- 微信接口 ----------------
 @app.get("/wechat")
-async def wechat_verify(signature: str, timestamp: str, nonce: str, echostr: str):
+async def wechat_verify(
+    signature: str = "", 
+    timestamp: str = "", 
+    nonce: str = "", 
+    echostr: str = ""
+):
     """微信服务器验证接口"""
     try:
-        check_signature(TOKEN, signature, timestamp, nonce)
-        return responses.PlainTextResponse(echostr)
+        # 如果 signature 不为空，说明是微信服务器请求，做签名验证
+        if signature:
+            check_signature(TOKEN, signature, timestamp, nonce)
+        return responses.PlainTextResponse(echostr or "ok")
     except InvalidSignatureException:
         return responses.PlainTextResponse("Invalid signature", status_code=403)
 
 @app.post("/wechat")
-async def receive_message(request: Request, signature: str, timestamp: str, nonce: str):
+async def receive_message(
+    request: Request, 
+    signature: str = "", 
+    timestamp: str = "", 
+    nonce: str = ""
+):
     """接收公众号消息"""
     try:
-        check_signature(TOKEN, signature, timestamp, nonce)
+        if signature:
+            check_signature(TOKEN, signature, timestamp, nonce)
     except InvalidSignatureException:
         return responses.PlainTextResponse("Invalid signature", status_code=403)
 
