@@ -7,6 +7,10 @@ import os
 app = FastAPI()
 EXCEL_PATH = "wechat_messages.xlsx"
 
+@app.get("/wechat")
+async def check(signature: str, timestamp: str, nonce: str, echostr: str):
+    return responses.PlainTextResponse(echostr)
+
 @app.post("/wechat")
 async def receive_message(request: Request):
     xml_data = await request.body()
