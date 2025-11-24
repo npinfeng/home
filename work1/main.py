@@ -75,33 +75,37 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
         print(f"Received Raw Body: {content}")
         msg_data = {}
 
-        # 尝试解析 JSON
+
+        # 2. 尝试解析 JSON
         if content.strip().startswith("{"):
             try:
                 payload = json.loads(content)
+                # 云托管有时候会把消息包在 'data' 字段里，有时候直接发
                 if "FromUserName" in payload:
                     msg_data = payload
                 elif "data" in payload and isinstance(payload["data"], dict):
-                    msg_data = payload["data"]
-                elif "action" in payload:  # CloudEvent
+                    msg_data = payload["data"]  # 解包
+                elif "action" in payload:  # CloudEvent 格式
                     msg_data = payload.get("data", {})
                 else:
-                    msg_data = payload
+                    msg_data = payload  # 盲猜就是它
                 logger.info("Parsed as JSON.")
             except Exception as e:
                 logger.error(f"JSON parsing failed: {e}")
 
-        # JSON 失败尝试 XML
+        # 3. 如果不是 JSON 或解析失败，尝试解析 XML
         if not msg_data:
             try:
                 xml_dict = xmltodict.parse(content)
                 msg_data = xml_dict.get("xml", {})
                 logger.info("Parsed as XML.")
             except Exception as e:
-                logger.error(f"XML parsing failed: {e}")
+                pass  # 也就是 XML 也失败了
 
+        # 4. 校验数据有效性
         if not msg_data or "FromUserName" not in msg_data:
-            logger.warning("Invalid message data.")
+            logger.warning("Could not extract valid message data.")
+            # 虽然解析失败，但仍返回 success 防止微信一直重试
             return Response(content="success", media_type="text/plain")
 
         # 异步保存 Excel
