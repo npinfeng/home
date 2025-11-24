@@ -42,7 +42,7 @@ def save_to_excel(data: dict):
             "FromUserName": data.get("FromUserName", "Unknown"),
             "CreateTime": data.get("CreateTime", ""),
             "MsgType": data.get("MsgType", "text"),
-            "Content": data.get("Content") or f"[Event: {data.get('Event')}]" if "Event" in data else "[Non-Text Message]",
+            "Content": data.get("Content", "测试"),
             "ReceiveTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         df = pd.read_excel(EXCEL_FILE)
