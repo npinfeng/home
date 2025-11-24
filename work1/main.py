@@ -75,7 +75,6 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
         print(f"Received Raw Body: {content}")
         msg_data = {}
 
-
         # 2. 尝试解析 JSON
         if content.strip().startswith("{"):
             try:
