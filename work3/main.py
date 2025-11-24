@@ -1,75 +1,57 @@
 import os
+import time
 import requests
-from fastapi import FastAPI, Query, Response
 
-app = FastAPI()
+## \file main.py
+## \brief 微信公众号推送消息脚本
+## \author 作业提交者
+## \date 2025-11-23
 
-# ---------------- 微信配置 ----------------
-APPID = os.getenv("APPID", "YOUR_APPID")
-APPSECRET = os.getenv("APPSECRET", "YOUR_APPSECRET")
+APPID = os.getenv("WECHAT_APPID", "wxbde07a7ea1251f19")
+APPSECRET = os.getenv("WECHAT_APPSECRET", "d82252ef9303acd4205c5d62faf2c37c")
+TO_OPENID = os.getenv("WECHAT_TO_OPENID", "byOhGAnRGMY9nY20IPQNSA")
 
-# access_token 缓存
-ACCESS_TOKEN_CACHE = {"token": None, "expires_at": 0}
+## \brief 获取微信 access_token
+## \param appid 微信 AppID
+## \param secret 微信 AppSecret
+## \return access_token, expires_in
 
-def get_access_token():
-    """获取微信公众号 access_token（自动缓存）"""
-    import time
-    if ACCESS_TOKEN_CACHE["token"] and ACCESS_TOKEN_CACHE["expires_at"] > time.time():
-        return ACCESS_TOKEN_CACHE["token"]
-    
-    url = f"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={APPID}&secret={APPSECRET}"
-    resp = requests.get(url)
-    data = resp.json()
+def get_access_token(appid, secret):
+    url = "https://api.weixin.qq.com/cgi-bin/token"
+    params = {"grant_type":"client_credential", "appid":appid, "secret":secret}
+    r = requests.get(url, params=params, timeout=10)
+    r.raise_for_status()
+    data = r.json()
     if "access_token" in data:
-        ACCESS_TOKEN_CACHE["token"] = data["access_token"]
-        ACCESS_TOKEN_CACHE["expires_at"] = time.time() + data["expires_in"] - 60
-        return data["access_token"]
+        return data["access_token"], data.get("expires_in", 7200)
     else:
-        raise Exception(f"获取 access_token 失败: {data}")
+        raise RuntimeError(f"无法获取 access_token: {data}")
 
-def push_text_message(to_user_openid: str, content: str):
-    """向单个用户发送文本消息"""
-    token = get_access_token()
-    url = f"https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token={token}"
+## \brief 发送自定义文本消息到指定 openid
+## \param access_token 微信 access_token
+## \param openid 用户 openid
+## \param text 文本内容
+## \return 微信接口响应
+
+def send_custom_text(access_token, openid, text):
+    url = f"https://api.weixin.qq.com/cgi-bin/message/custom/send?access_token={access_token}"
     payload = {
-        "touser": to_user_openid,
+        "touser": openid,
         "msgtype": "text",
-        "text": {"content": content}
+        "text": {"content": text}
     }
-    resp = requests.post(url, json=payload)
-    return resp.json()
+    r = requests.post(url, json=payload, timeout=10)
+    r.raise_for_status()
+    return r.json()
 
-# ---------------- 根接口 ----------------
-@app.get("/")
-async def root():
-    return {"status": "running", "service": "WeChat Push Only"}
-
-# ---------------- 主动推送接口 ----------------
-@app.post("/push")
-async def push_message(
-    content: str = Query(..., description="要发送的文本消息"),
-    openids: str = Query(..., description="粉丝 OpenID 列表，用逗号分隔")
-):
-    """
-    主动向指定用户推送消息
-    openids 示例: "openid1,openid2,openid3"
-    """
-    user_list = [o.strip() for o in openids.split(",") if o.strip()]
-    if not user_list:
-        return {"error": "没有有效 OpenID"}
-
-    results = []
-    for openid in user_list:
-        try:
-            resp = push_text_message(openid, content)
-            results.append({"openid": openid, "status": resp})
-        except Exception as e:
-            results.append({"openid": openid, "status": str(e)})
-
-    return {"pushed_count": len(results), "results": results}
-
-# ---------------- 启动 ----------------
+## \brief 主程序入口，推送测试消息
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    if APPID.startswith("YOUR") or APPSECRET.startswith("YOUR") or TO_OPENID.startswith("TARGET"):
+        print("请先把 WECHAT_APPID、WECHAT_APPSECRET、WECHAT_TO_OPENID 放到环境变量，或直接修改脚本中的值后再运行。")
+        exit(1)
+    token, expires = get_access_token(APPID, APPSECRET)
+    print("access_token 获取成功，expires_in=", expires)
+    text = "这是来自作业三的测试推送消息 —— 本地脚本发送（无长期服务器）。"
+    resp = send_custom_text(token, TO_OPENID, text)
+    print("发送结果：", resp)
+

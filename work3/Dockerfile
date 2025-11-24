@@ -6,7 +6,7 @@ WORKDIR /app
 # 复制代码和依赖文件
 COPY main.py requirements.txt /app/
 
-# 安装依赖
+# 安装依赖  
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
