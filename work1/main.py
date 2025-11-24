@@ -69,9 +69,10 @@ async def root():
 async def receive_message(request: Request, background_tasks: BackgroundTasks):
     try:
         body = await request.body()
+        logger.info(f"Received Raw Body 1: {type(body)}<->{body}")
         content = body.decode("utf-8")
-        logger.info(f"Received Raw Body: {content}")
-        print(f"Received Raw Body: {content}")
+        # logger.info(f"Received Raw Body: {content}")
+        # print(f"Received Raw Body: {content}")
         msg_data = {}
 
         # 尝试解析 JSON
