@@ -100,7 +100,7 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
                 logger.info("Parsed as XML.")
             except Exception as e:
                 pass  # 也就是 XML 也失败了
-
+        logger.info(f"Extracted Message Data: {msg_data}")
         # 4. 校验数据有效性
         if not msg_data or "FromUserName" not in msg_data:
             logger.warning("Could not extract valid message data.")
